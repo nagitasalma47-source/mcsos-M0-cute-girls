@@ -29,16 +29,15 @@
 ## Initial threats and mitigations
 | Threat | Dampak | Mitigasi M0 |
 |---|---|---|
-| Repository ditempatkan di `/mnt/c` | Build tidak reproducible | Check script memberi warning; repository dipindah ke `~/src/mcsos`. |
-| Compiler host dipakai tanpa target eksplisit | Object salah ABI | Smoke test memakai `--target` dan `readelf`. |
-| Tool versi tidak tercatat | Hasil tidak dapat diaudit | `build/meta/toolchain-versions.txt`. |
-| Script dari internet dieksekusi tanpa review | Supply-chain compromise | Gunakan package manager resmi dan catat URL/checksum untuk source manual. |
-| Klaim readiness berlebihan | Penilaian tidak valid | Gunakan readiness label berbasis bukti. |
-| Anggota kelompok tidak memahami baseline | Integrasi gagal | Laporan mencantumkan peran dan review lintas anggota. |
+| Repository ditempatkan di /mnt/c | Build tidak reproducible | Pindah ke ~/src/mcsos |
+| Compiler tanpa target | Object salah ABI | Pakai --target dan readelf |
+| Tool tidak tercatat | Tidak bisa audit | Simpan metadata |
+| Script sembarangan | Supply-chain risk | Pakai source resmi |
+| Klaim berlebihan | Penilaian salah | Pakai evidence |
+| Kurang koordinasi tim | Integrasi gagal | Dokumentasi jelas |
 
 ## Out of scope M0
-1. Enforcement MAC/RBAC/capability.
-2. Secure Boot penuh.
-3. TPM measured boot.
-4. Kernel exploit mitigation.
-5. Syscall fuzzing.
+1. Secure Boot
+2. TPM
+3. Kernel security
+4. Syscall fuzzing
