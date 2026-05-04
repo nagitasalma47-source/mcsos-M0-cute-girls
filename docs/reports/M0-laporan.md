@@ -1,14 +1,21 @@
 # Laporan Praktikum M0 — MCSOS 260502
 
 ## 1. Sampul
-Nama Kelompok: Cute Girls
+
+Judul Praktikum:  
+Praktikum M0 — Baseline Requirements, Governance, dan Lingkungan Pengembangan Reproducible MCSOS 260502  
+
+Nama Kelompok: Cute Girls  
 
 Anggota:
 1. Neng Nagita Salma — 25832071004  
 2. Anisa Nur Azfa — 25832072003  
 3. Lailatul Zulfa — 25832072001  
 
-Kelas: 1A
+Kelas: 1A  
+Dosen: Muhaemin Sidiq, S.Pd., M.Pd.  
+Program Studi: Pendidikan Teknologi Informasi, Institut Pendidikan Indonesia  
+Tanggal: 4 Mei 2026
 
 ## 2. Tujuan
 Menyiapkan environment pengembangan OS menggunakan WSL2, toolchain, dan QEMU.
