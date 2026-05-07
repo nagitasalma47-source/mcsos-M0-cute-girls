@@ -1,5 +1,6 @@
 OUTPUT_FORMAT(elf64-x86-64)
-ENTRY(kmain)
+
+ENTRY(_start)
 
 PHDRS
 {
@@ -34,6 +35,6 @@ SECTIONS
         *(COMMON)
         *(.bss .bss.*)
     } :data
-
+    
     __kernel_end = .;
 }

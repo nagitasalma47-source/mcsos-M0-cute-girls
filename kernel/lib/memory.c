@@ -40,7 +40,7 @@ void *memmove(void *dest, const void *src, size_t count) {
         while (count-- != 0u) {
             *--d = *--s;
         }
-    }
+     }
 
     return dest;
 }
