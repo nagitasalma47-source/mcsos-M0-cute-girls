@@ -35,6 +35,20 @@ SRC_C := $(shell find kernel -name '*.c' | LC_ALL=C sort)
 OBJ := $(patsubst %.c,$(BUILD_DIR)/normal/%.o,$(SRC_C))
 PANIC_OBJ := $(patsubst %.c,$(BUILD_DIR)/panic/%.o,$(SRC_C))
 
+SRC_S := $(shell find kernel -name '*.S' | LC_ALL=C sort)
+
+OBJ += $(patsubst %.S,$(BUILD_DIR)/normal/%.o,$(SRC_S))
+PANIC_OBJ += $(patsubst %.S,$(BUILD_DIR)/panic/%.o,$(SRC_S))
+
+$(BUILD_DIR)/normal/%.o: %.S
+>mkdir -p $(dir $@)
+>$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/panic/%.o: %.S
+>mkdir -p $(dir $@)
+>$(CC) $(PANIC_CFLAGS) -c $< -o $@
+
+
 .PHONY: all build panic inspect audit clean distclean
 
 panic: $(PANIC_KERNEL)
@@ -65,16 +79,20 @@ inspect: $(KERNEL)
 >grep -q 'kmain' $(SYMS)
 >grep -q 'kernel_panic_at' $(SYMS)
 >grep -q 'cpu_halt_forever' $(DISASM)
-
+>
 audit: inspect panic
 >! $(NM) -u $(KERNEL) | grep .
 >! $(NM) -u $(PANIC_KERNEL) | grep .
 >grep -q 'kernel_panic_at' $(BUILD_DIR)/kernel.disasm.txt
 >$(READELF) -S $(KERNEL) | grep -q '.text'
 >$(READELF) -S $(KERNEL) | grep -q '.rodata'
-
+>
 clean:
 >rm -rf $(BUILD_DIR)
-
+>
 distclean: clean
 >rm -rf iso_root limine
+>
+>build/normal/kernel/arch/x86_64/isr.o: kernel/arch/x86_64/isr.S
+>mkdir -p build/normal/kernel/arch/x86_64/
+>clang --target=x86_64-unknown-none-elf -c kernel/arch/x86_64/isr.S -o build/normal/kernel/arch/x86_64/isr.o
