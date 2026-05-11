@@ -1,6 +1,8 @@
 #include <stdint.h>
 #include <mcsos/arch/idt.h>
 #include <mcsos/kernel/log.h>
+#include <pic.h>
+#include <pit.h>
 #include <mcsos/kernel/panic.h>
 
 static const char *exception_names[32] = {
@@ -73,7 +75,15 @@ log_write("[M4] trap dispatch: ");
 log_writeln(trap_name(frame->vector));
 
 log_trap_frame(frame);
+if (frame->vector >= 32u && frame->vector <= 47u) {
 
+    if (frame->vector == 32u) {
+        timer_on_irq0();
+    }
+
+    pic_send_eoi((uint8_t)(frame->vector - 32u));
+    return;
+}
 if (frame->vector == 3u) {
 log_writeln("[M4] breakpoint handled; returning with iretq");
 return;

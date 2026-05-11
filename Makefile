@@ -3,14 +3,14 @@ SHELL := /usr/bin/env bash
 
 BUILD_DIR := build
 
-KERNEL := $(BUILD_DIR)/kernel.elf
-PANIC_KERNEL := $(BUILD_DIR)/kernel.panic.elf
+KERNEL := $(BUILD_DIR)/mcsos-m5.elf
+PANIC_KERNEL := $(BUILD_DIR)/mcsos-m5.panic.elf
 
-MAP := $(BUILD_DIR)/kernel.map
-PANIC_MAP := $(BUILD_DIR)/kernel.panic.map
+MAP := $(BUILD_DIR)/mcsos-m5.map
+PANIC_MAP := $(BUILD_DIR)/mcsos-m5.panic.map
 
-DISASM := $(BUILD_DIR)/kernel.disasm.txt
-SYMS := $(BUILD_DIR)/kernel.syms.txt
+DISASM := $(BUILD_DIR)/disassembly.txt
+SYMS := $(BUILD_DIR)/symbols.txt
 
 CC := clang
 LD := ld.lld
@@ -40,59 +40,76 @@ SRC_S := $(shell find kernel -name '*.S' | LC_ALL=C sort)
 OBJ += $(patsubst %.S,$(BUILD_DIR)/normal/%.o,$(SRC_S))
 PANIC_OBJ += $(patsubst %.S,$(BUILD_DIR)/panic/%.o,$(SRC_S))
 
-$(BUILD_DIR)/normal/%.o: %.S
->mkdir -p $(dir $@)
->$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/panic/%.o: %.S
->mkdir -p $(dir $@)
->$(CC) $(PANIC_CFLAGS) -c $< -o $@
-
-
 .PHONY: all build panic inspect audit clean distclean
 
 panic: $(PANIC_KERNEL)
 
+$(BUILD_DIR)/normal/%.o: %.S
+
+> mkdir -p $(dir $@)
+> $(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/panic/%.o: %.S
+
+> mkdir -p $(dir $@)
+> $(CC) $(PANIC_CFLAGS) -c $< -o $@
+
 $(BUILD_DIR)/normal/%.o: %.c
->mkdir -p $(dir $@)
->$(CC) $(CFLAGS) -c $< -o $@
+
+> mkdir -p $(dir $@)
+> $(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/panic/%.o: %.c
->mkdir -p $(dir $@)
->$(CC) $(PANIC_CFLAGS) -c $< -o $@
+
+> mkdir -p $(dir $@)
+> $(CC) $(PANIC_CFLAGS) -c $< -o $@
 
 $(KERNEL): $(OBJ) linker.ld
->mkdir -p $(BUILD_DIR)
->$(LD) $(LDFLAGS) -Map=$(MAP) -o $@ $(OBJ)
+
+> mkdir -p $(BUILD_DIR)
+> $(LD) $(LDFLAGS) -Map=$(MAP) -o $@ $(OBJ)
 
 $(PANIC_KERNEL): $(PANIC_OBJ) linker.ld
->mkdir -p $(BUILD_DIR)
->$(LD) $(LDFLAGS) -Map=$(PANIC_MAP) -o $@ $(PANIC_OBJ)
+
+> mkdir -p $(BUILD_DIR)
+> $(LD) $(LDFLAGS) -Map=$(PANIC_MAP) -o $@ $(PANIC_OBJ)
 
 inspect: $(KERNEL)
->$(READELF) -h $(KERNEL) > $(BUILD_DIR)/kernel.readelf.header.txt
->$(READELF) -l $(KERNEL) > $(BUILD_DIR)/kernel.readelf.programs.txt
->$(NM) -n $(KERNEL) > $(SYMS)
->$(OBJDUMP) -d -Mintel $(KERNEL) > $(DISASM)
->grep -q 'ELF64' $(BUILD_DIR)/kernel.readelf.header.txt
->grep -q 'Machine:[[:space:]]*Advanced Micro Devices X86-64' $(BUILD_DIR)/kernel.readelf.header.txt
->grep -q 'kmain' $(SYMS)
->grep -q 'kernel_panic_at' $(SYMS)
->grep -q 'cpu_halt_forever' $(DISASM)
->
+
+> $(READELF) -h $(KERNEL) > $(BUILD_DIR)/readelf-header.txt
+> $(READELF) -S $(KERNEL) > $(BUILD_DIR)/readelf-sections.txt
+> $(READELF) -l $(KERNEL) > $(BUILD_DIR)/readelf-program-headers.txt
+> $(NM) -n $(KERNEL) > $(SYMS)
+> $(NM) -u $(KERNEL) > $(BUILD_DIR)/undefined.txt
+> $(OBJDUMP) -d -Mintel $(KERNEL) > $(DISASM)
+
+> grep -q 'ELF64' $(BUILD_DIR)/readelf-header.txt
+> grep -q 'Machine:[[:space:]]*Advanced Micro Devices X86-64' $(BUILD_DIR)/readelf-header.txt
+> grep -q 'kmain' $(SYMS)
+> grep -q 'kernel_panic_at' $(SYMS)
+> grep -q 'cpu_halt_forever' $(DISASM)
+
 audit: inspect panic
->! $(NM) -u $(KERNEL) | grep .
->! $(NM) -u $(PANIC_KERNEL) | grep .
->grep -q 'kernel_panic_at' $(BUILD_DIR)/kernel.disasm.txt
->$(READELF) -S $(KERNEL) | grep -q '.text'
->$(READELF) -S $(KERNEL) | grep -q '.rodata'
->
+
+> ! $(NM) -u $(KERNEL) | grep .
+> ! $(NM) -u $(PANIC_KERNEL) | grep .
+> grep -q 'kernel_panic_at' $(DISASM)
+> $(READELF) -S $(KERNEL) | grep -q '.text'
+> $(READELF) -S $(KERNEL) | grep -q '.rodata'
+
+grade: all
+
+> grep -q 'isr_stub_32' $(SYMS)
+> grep -q 'pic_remap' $(SYMS)
+> grep -q 'pit_configure_hz' $(SYMS)
+> grep -q 'timer_on_irq0' $(SYMS)
+> grep -q 'x86_64_trap_dispatch' $(SYMS)
+> @echo "M5 static grade: PASS"
+
 clean:
->rm -rf $(BUILD_DIR)
->
+
+> rm -rf $(BUILD_DIR)
+
 distclean: clean
->rm -rf iso_root limine
->
->build/normal/kernel/arch/x86_64/isr.o: kernel/arch/x86_64/isr.S
->mkdir -p build/normal/kernel/arch/x86_64/
->clang --target=x86_64-unknown-none-elf -c kernel/arch/x86_64/isr.S -o build/normal/kernel/arch/x86_64/isr.o
+
+> rm -rf iso_root limine

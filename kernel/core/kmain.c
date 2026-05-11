@@ -8,6 +8,9 @@ volatile LIMINE_BASE_REVISION(0);
 #include <mcsos/arch/idt.h>
 #include <mcsos/kernel/log.h>
 #include <mcsos/kernel/panic.h>
+#include <io.h>
+#include <pic.h>
+#include <pit.h>
 #include <mcsos/kernel/version.h>
 
 extern char __kernel_start[];
@@ -49,6 +52,17 @@ cpu_read_rflags()
 );
 
 x86_64_idt_init();
+cpu_cli();
+
+pic_remap(PIC1_OFFSET, PIC2_OFFSET);
+
+pic_mask_all();
+pic_unmask_irq(0);
+pit_configure_hz(100);
+cpu_sti();
+
+
+log_writeln("[M5] PIC/PIT initialized; interrupts enabled");
 
 m4_selftest();
 
