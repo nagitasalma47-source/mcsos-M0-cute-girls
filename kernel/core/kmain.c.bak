@@ -12,19 +12,9 @@ volatile LIMINE_BASE_REVISION(0);
 #include <pic.h>
 #include <pit.h>
 #include <mcsos/kernel/version.h>
-#include "pmm.h"
 
 extern char __kernel_start[];
 extern char __kernel_end[];
-
-static struct pmm_state kernel_pmm;
-static uint8_t kernel_pmm_bitmap[PMM_BITMAP_BYTES] __attribute__((aligned(4096)));
-
-static struct boot_mem_region test_regions[] = {
-    { .base = 0x00000000ULL, .length = 0x0009f000ULL, .type = BOOT_MEM_USABLE },
-    { .base = 0x0009f000ULL, .length = 0x00001000ULL, .type = BOOT_MEM_RESERVED },
-    { .base = 0x00100000ULL, .length = 0x03f00000ULL, .type = BOOT_MEM_USABLE },
-};
 
 static void m4_selftest(void) {
 KERNEL_ASSERT(__kernel_end > __kernel_start);
@@ -75,33 +65,6 @@ cpu_sti();
 log_writeln("[M5] PIC/PIT initialized; interrupts enabled");
 
 m4_selftest();
-
-if (!pmm_init_from_map(
-    &kernel_pmm,
-    test_regions,
-    sizeof(test_regions) / sizeof(test_regions[0]),
-    kernel_pmm_bitmap,
-    sizeof(kernel_pmm_bitmap),
-    64ULL * 1024ULL * 1024ULL
-)) {
-    KERNEL_PANIC("pmm_init_from_map failed", 0x4D3650414E4943ULL);
-}
-
-log_writeln("[M6] PMM initialized");
-
-uint64_t frame = pmm_alloc_frame(&kernel_pmm);
-
-if (frame == PMM_INVALID_FRAME) {
-    KERNEL_PANIC("pmm_alloc_frame failed", 0x4D3650414E4943ULL);
-}
-
-log_key_value_hex64("[M6] allocated_frame", frame);
-
-if (!pmm_free_frame(&kernel_pmm, frame)) {
-    KERNEL_PANIC("pmm_free_frame failed", 0x4D3650414E4943ULL);
-}
-
-log_writeln("[M6] PMM selftest passed");
 
 #ifdef MCSOS_M4_TRIGGER_BREAKPOINT
 log_writeln("[M4] triggering intentional breakpoint exception");

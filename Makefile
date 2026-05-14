@@ -1,3 +1,4 @@
+HOSTCC ?= cc
 .RECIPEPREFIX := >
 SHELL := /usr/bin/env bash
 
@@ -113,3 +114,27 @@ clean:
 distclean: clean
 
 > rm -rf iso_root limine
+
+
+
+M6_CFLAGS := -std=c17 -Wall -Wextra -Werror -ffreestanding -fno-builtin -fno-stack-protector -mno-red-zone -Iinclude
+
+build/pmm.o: src/pmm.c include/pmm.h include/types.h
+> mkdir -p build
+> $(CC) $(M6_CFLAGS) -c src/pmm.c -o build/pmm.o
+
+build/test_pmm_host: src/pmm.c tests/test_pmm_host.c include/pmm.h include/types.h
+> mkdir -p build
+> $(HOSTCC) -std=c17 -Wall -Wextra -Werror -Iinclude src/pmm.c tests/test_pmm_host.c -o build/test_pmm_host
+
+check-m6: build/pmm.o build/test_pmm_host
+> ./build/test_pmm_host
+> nm -u build/pmm.o | tee build/pmm.undefined.txt
+> test ! -s build/pmm.undefined.txt
+> objdump -dr build/pmm.o > build/pmm.objdump.txt
+
+qemu:
+> qemu-system-x86_64 -kernel $(KERNEL) -serial stdio -no-reboot -no-shutdown
+
+run-qemu-gdb:
+> qemu-system-x86_64 -cdrom build/mcsos.iso -serial stdio -s -S
