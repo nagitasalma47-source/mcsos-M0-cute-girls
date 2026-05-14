@@ -4,6 +4,7 @@
 #include <pic.h>
 #include <pit.h>
 #include <mcsos/kernel/panic.h>
+#include "vmm.h"
 
 static const char *exception_names[32] = {
 "#DE Divide Error",
@@ -41,6 +42,23 @@ static const char *exception_names[32] = {
 };
 
 static uint64_t trap_count;
+
+static void page_fault_dump(uint64_t error_code, const x86_64_trap_frame_t *tf) {
+    uint64_t cr2 = vmm_read_cr2();
+
+    log_writeln("#PF page fault");
+
+    log_key_value_hex64("cr2", cr2);
+    log_key_value_hex64("error", error_code);
+    log_key_value_hex64("rip", tf->rip);
+
+    log_key_value_hex64("present_protection", (error_code & 1ULL) != 0ULL);
+    log_key_value_hex64("write", (error_code & 2ULL) != 0ULL);
+    log_key_value_hex64("user", (error_code & 4ULL) != 0ULL);
+    log_key_value_hex64("reserved", (error_code & 8ULL) != 0ULL);
+    log_key_value_hex64("instruction_fetch", (error_code & 16ULL) != 0ULL);
+}
+
 
 static const char *trap_name(uint64_t vector) {
 if (vector < 32u) {
@@ -84,6 +102,11 @@ if (frame->vector >= 32u && frame->vector <= 47u) {
     pic_send_eoi((uint8_t)(frame->vector - 32u));
     return;
 }
+if (frame->vector == 14u) {
+page_fault_dump(frame->error_code, frame);
+KERNEL_PANIC("page fault", frame->error_code);
+}
+
 if (frame->vector == 3u) {
 log_writeln("[M4] breakpoint handled; returning with iretq");
 return;

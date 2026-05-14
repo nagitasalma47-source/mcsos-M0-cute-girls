@@ -23,7 +23,7 @@ all: build inspect
 
 build: $(KERNEL)
 
-COMMON_CFLAGS := --target=x86_64-unknown-none-elf -std=c17 -ffreestanding -fno-builtin -fno-stack-protector -fno-stack-check -fno-pic -fno-pie -fno-lto -m64 -march=x86-64 -mabi=sysv -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -mcmodel=kernel -Wall -Wextra -Werror -Ikernel/arch/x86_64/include -Ikernel/include
+COMMON_CFLAGS := --target=x86_64-unknown-none-elf -std=c17 -ffreestanding -fno-builtin -fno-stack-protector -fno-stack-check -fno-pic -fno-pie -fno-lto -m64 -march=x86-64 -mabi=sysv -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -mcmodel=kernel -Wall -Wextra -Werror -Ikernel/arch/x86_64/include -Ikernel/include -Iinclude
 
 CFLAGS := $(COMMON_CFLAGS)
 
@@ -32,6 +32,7 @@ PANIC_CFLAGS := $(COMMON_CFLAGS) -DMCSOS_M3_TRIGGER_PANIC=1
 LDFLAGS := -nostdlib -static -z max-page-size=0x1000 -T linker.ld
 
 SRC_C := $(shell find kernel -name '*.c' | LC_ALL=C sort)
+SRC_C += src/vmm.c
 
 OBJ := $(patsubst %.c,$(BUILD_DIR)/normal/%.o,$(SRC_C))
 PANIC_OBJ := $(patsubst %.c,$(BUILD_DIR)/panic/%.o,$(SRC_C))
@@ -138,3 +139,24 @@ qemu:
 
 run-qemu-gdb:
 > qemu-system-x86_64 -cdrom build/mcsos.iso -serial stdio -s -S
+
+M7_CFLAGS := -std=c17 -Wall -Wextra -Werror -ffreestanding -fno-builtin -fno-stack-protector -mno-red-zone -Iinclude
+M7_HOST_CFLAGS := -std=c17 -Wall -Wextra -Werror -DMCSOS_HOST_TEST -Iinclude
+
+build/vmm.o: src/vmm.c include/vmm.h include/types.h
+> mkdir -p build
+> $(CC) $(M7_CFLAGS) -c src/vmm.c -o build/vmm.o
+
+build/test_vmm_host: src/vmm.c tests/test_vmm_host.c include/vmm.h include/types.h
+> mkdir -p build
+> $(HOSTCC) $(M7_HOST_CFLAGS) src/vmm.c tests/test_vmm_host.c -o build/test_vmm_host
+
+check-m7: build/vmm.o build/test_vmm_host
+> ./build/test_vmm_host
+> nm -u build/vmm.o | tee build/vmm.undefined.txt
+> test ! -s build/vmm.undefined.txt
+> objdump -dr build/vmm.o > build/vmm.objdump.txt
+> grep -q "invlpg" build/vmm.objdump.txt
+> grep -q "cr3" build/vmm.objdump.txt
+> @echo "M7 VMM host tests PASS"
+
