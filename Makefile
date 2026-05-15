@@ -160,3 +160,31 @@ check-m7: build/vmm.o build/test_vmm_host
 > grep -q "cr3" build/vmm.objdump.txt
 > @echo "M7 VMM host tests PASS"
 
+
+
+# ===== M8 Kernel Heap =====
+
+M8_BUILD_DIR := build/m8
+
+.PHONY: m8-clean m8-kmem-host-test m8-kmem-freestanding m8-audit m8-all
+
+m8-clean:
+	rm -rf $(M8_BUILD_DIR)
+
+$(M8_BUILD_DIR):
+	mkdir -p $(M8_BUILD_DIR)
+
+m8-kmem-freestanding: | $(M8_BUILD_DIR)
+	clang -std=c17 -Wall -Wextra -Werror -Iinclude -ffreestanding -fno-builtin -fno-stack-protector -mno-red-zone -c kernel/mm/kmem.c -o $(M8_BUILD_DIR)/kmem.freestanding.o
+
+m8-kmem-host-test: | $(M8_BUILD_DIR)
+	clang -std=c17 -Wall -Wextra -Werror -Iinclude tests/test_kmem.c kernel/mm/kmem.c -o $(M8_BUILD_DIR)/test_kmem
+	./$(M8_BUILD_DIR)/test_kmem | tee $(M8_BUILD_DIR)/test_kmem.log
+
+m8-audit: m8-kmem-freestanding
+	nm -u $(M8_BUILD_DIR)/kmem.freestanding.o | tee $(M8_BUILD_DIR)/nm_u.txt
+	test ! -s $(M8_BUILD_DIR)/nm_u.txt
+	readelf -h $(M8_BUILD_DIR)/kmem.freestanding.o > $(M8_BUILD_DIR)/readelf_h.txt
+	objdump -dr $(M8_BUILD_DIR)/kmem.freestanding.o > $(M8_BUILD_DIR)/kmem.objdump.txt
+
+m8-all: m8-kmem-host-test m8-audit

@@ -14,6 +14,7 @@ volatile LIMINE_BASE_REVISION(0);
 #include <mcsos/kernel/version.h>
 #include "pmm.h"
 #include "vmm.h"
+#include "mcsos/kmem.h"
 
 extern char __kernel_start[];
 extern char __kernel_end[];
@@ -23,6 +24,60 @@ static uint8_t kernel_pmm_bitmap[PMM_BITMAP_BYTES] __attribute__((aligned(4096))
 
 static struct vmm_space kernel_space;
 static uint64_t hhdm_offset = 0;
+
+#define M8_BOOT_HEAP_SIZE (64u * 1024u)
+#define KHEAP_BASE 0xffffffff90000000ull
+#define KHEAP_SIZE (256ull * 1024ull)
+static unsigned char m8_boot_heap[M8_BOOT_HEAP_SIZE] __attribute__((aligned(4096)));
+
+static void m8_heap_bootstrap(void) {
+    int rc = kmem_init(m8_boot_heap, sizeof(m8_boot_heap));
+
+    if (rc != 0) {
+        kernel_panic("M8 kmem_init failed");
+    }
+
+    void *probe = kmem_alloc(128);
+
+    if (probe == 0) {
+        kernel_panic("M8 kmem_alloc probe failed");
+    }
+
+    if (kmem_free_checked(probe) != 0) {
+        kernel_panic("M8 kmem_free_checked probe failed");
+    }
+
+    kmem_stats_t st;
+    kmem_get_stats(&st);
+
+    klog_info("M8 kmem initialized");
+}
+static int kheap_map_initial_pages(void) {
+    for (uint64_t va = KHEAP_BASE; 
+         va < KHEAP_BASE + KHEAP_SIZE; 
+         va += 4096ull) {
+
+        uint64_t pa = pmm_alloc_frame(&kernel_pmm);
+
+        if (pa == PMM_INVALID_FRAME) {
+            return -1;
+        }
+
+        int rc = vmm_map_page(
+            &kernel_space,
+            va,
+            pa,
+            VMM_PRESENT | VMM_WRITABLE
+        );
+
+        if (rc != VMM_MAP_OK) {
+            pmm_free_frame(&kernel_pmm, pa);
+            return -2;
+        }
+    }
+
+    return kmem_init((void *)KHEAP_BASE, KHEAP_SIZE);
+}
 
 static void memzero(void *ptr, uint64_t size) {
     uint8_t *p = (uint8_t *)ptr;
@@ -156,6 +211,9 @@ if (vmm_rc != VMM_MAP_OK) {
 }
 
 log_writeln("[M7] VMM core initialized");
+
+m8_heap_bootstrap();
+log_writeln("[M8] kernel heap initialized");
 
 
 #ifdef MCSOS_M4_TRIGGER_BREAKPOINT
