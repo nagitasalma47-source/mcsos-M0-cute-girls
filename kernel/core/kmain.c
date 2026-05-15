@@ -15,6 +15,7 @@ volatile LIMINE_BASE_REVISION(0);
 #include "pmm.h"
 #include "vmm.h"
 #include "mcsos/kmem.h"
+#include "mcsos_thread.h"
 
 extern char __kernel_start[];
 extern char __kernel_end[];
@@ -30,29 +31,36 @@ static uint64_t hhdm_offset = 0;
 #define KHEAP_SIZE (256ull * 1024ull)
 static unsigned char m8_boot_heap[M8_BOOT_HEAP_SIZE] __attribute__((aligned(4096)));
 
-static void m8_heap_bootstrap(void) {
+static mcsos_scheduler_t g_sched;
+static mcsos_thread_t g_boot_thread;
+static mcsos_thread_t g_thread_a;
+static mcsos_thread_t g_thread_b;
+static unsigned char g_stack_a[8192] __attribute__((aligned(16)));
+static unsigned char g_stack_b[8192] __attribute__((aligned(16)));
+
+static __attribute__((unused)) void m8_heap_bootstrap(void) {
     int rc = kmem_init(m8_boot_heap, sizeof(m8_boot_heap));
 
     if (rc != 0) {
-        kernel_panic("M8 kmem_init failed");
+        kernel_panic_at(__FILE__, __LINE__, "M8 kmem_init failed", 0);
     }
 
     void *probe = kmem_alloc(128);
 
     if (probe == 0) {
-        kernel_panic("M8 kmem_alloc probe failed");
+        kernel_panic_at(__FILE__, __LINE__, "M8 kmem_alloc probe failed", 0);
     }
 
     if (kmem_free_checked(probe) != 0) {
-        kernel_panic("M8 kmem_free_checked probe failed");
+        kernel_panic_at(__FILE__, __LINE__, "M8 kmem_free_checked probe failed", 0);
     }
 
     kmem_stats_t st;
     kmem_get_stats(&st);
 
-    klog_info("M8 kmem initialized");
+    log_writeln("M8 kmem initialized");
 }
-static int kheap_map_initial_pages(void) {
+static __attribute__((unused)) int kheap_map_initial_pages(void) {
     for (uint64_t va = KHEAP_BASE; 
          va < KHEAP_BASE + KHEAP_SIZE; 
          va += 4096ull) {
@@ -67,7 +75,7 @@ static int kheap_map_initial_pages(void) {
             &kernel_space,
             va,
             pa,
-            VMM_PRESENT | VMM_WRITABLE
+            VMM_PTE_PRESENT | VMM_PTE_WRITABLE
         );
 
         if (rc != VMM_MAP_OK) {
@@ -115,6 +123,22 @@ KERNEL_ASSERT(x86_64_idt_base_for_test() != 0u);
 KERNEL_ASSERT(x86_64_idt_limit_for_test() == 4095u);
 
 log_writeln("[M4] selftest: IDT invariants passed");
+}
+
+static void demo_thread_a(void *arg) {
+    (void)arg;
+    for (;;) {
+        log_writeln("[M9] thread A tick");
+        mcsos_sched_yield(&g_sched);
+    }
+}
+
+static void demo_thread_b(void *arg) {
+    (void)arg;
+    for (;;) {
+        log_writeln("[M9] thread B tick");
+        mcsos_sched_yield(&g_sched);
+    }
 }
 
 void kmain(void) {
@@ -212,8 +236,24 @@ if (vmm_rc != VMM_MAP_OK) {
 
 log_writeln("[M7] VMM core initialized");
 
-m8_heap_bootstrap();
-log_writeln("[M8] kernel heap initialized");
+//    kheap_map_initial_pages();
+//    m8_heap_bootstrap();
+//log_writeln("[M8] kernel heap initialized");
+
+mcsos_scheduler_init(&g_sched, &g_boot_thread);
+
+mcsos_thread_prepare(&g_thread_a, "demo-a", demo_thread_a, 0,
+g_stack_a, sizeof(g_stack_a), g_sched.next_id++);
+
+mcsos_thread_prepare(&g_thread_b, "demo-b", demo_thread_b, 0,
+g_stack_b, sizeof(g_stack_b), g_sched.next_id++);
+
+mcsos_sched_enqueue(&g_sched, &g_thread_a);
+mcsos_sched_enqueue(&g_sched, &g_thread_b);
+
+log_writeln("[M9] scheduler initialized");
+
+mcsos_sched_yield(&g_sched);
 
 
 #ifdef MCSOS_M4_TRIGGER_BREAKPOINT

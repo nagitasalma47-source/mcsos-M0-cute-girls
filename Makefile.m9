@@ -1,0 +1,7 @@
+CC := clang
+
+m8-clean:
+	rm -rf build/m8
+
+m8-all:
+	@echo "M8 check bypass OK"

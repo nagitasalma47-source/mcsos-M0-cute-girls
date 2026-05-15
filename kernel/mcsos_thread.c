@@ -1,0 +1,141 @@
+#include "mcsos_thread.h"
+
+int mcsos_scheduler_init(mcsos_scheduler_t *s, mcsos_thread_t *boot) {
+    if (!s || !boot) return MCSOS_SCHED_ERR;
+
+    s->current = boot;
+    s->ready_head = NULL;
+    s->ready_tail = NULL;
+    s->runnable_count = 0;
+    s->next_id = 0;
+    s->context_switches = 0;
+
+    boot->state = MCSOS_THREAD_RUNNING;
+    boot->id = s->next_id++;
+
+    if (s->current && s->current->entry) {
+        s->current->entry(s->current->arg);
+    }
+
+    return MCSOS_SCHED_OK;
+}
+
+int mcsos_thread_prepare(
+    mcsos_thread_t *t,
+    const char *name,
+    void (*entry)(void *),
+    void *arg,
+    unsigned char *stack,
+    size_t stack_size,
+    uint64_t id
+) {
+    if (!t) return MCSOS_SCHED_ERR;
+
+    t->name = name;
+    t->entry = entry;
+    t->arg = arg;
+    t->stack = stack;
+    t->stack_size = stack_size;
+    t->id = id;
+    t->state = MCSOS_THREAD_READY;
+    t->ticks = 0;
+
+    t->context.rsp = (uint64_t)(stack + stack_size) & ~0xF;
+
+
+    return MCSOS_SCHED_OK;
+}
+
+int mcsos_sched_enqueue(mcsos_scheduler_t *s, mcsos_thread_t *t) {
+    if (!s || !t) return MCSOS_SCHED_ERR;
+
+    t->state = MCSOS_THREAD_READY;
+    t->next = NULL;
+
+    if (!s->ready_tail) {
+        s->ready_head = s->ready_tail = t;
+    } else {
+        s->ready_tail->next = t;
+        s->ready_tail = t;
+    }
+
+    s->runnable_count++;
+    if (s->current && s->current->entry) {
+        s->current->entry(s->current->arg);
+    }
+
+    return MCSOS_SCHED_OK;
+}
+
+uint32_t mcsos_sched_ready_count(mcsos_scheduler_t *s) {
+    if (!s) return 0;
+    return (uint32_t)s->runnable_count;
+}
+
+int mcsos_sched_tick(mcsos_scheduler_t *s) {
+    if (!s || !s->current) return MCSOS_SCHED_ERR;
+
+    s->current->ticks++;
+    if (s->current && s->current->entry) {
+        s->current->entry(s->current->arg);
+    }
+
+    return MCSOS_SCHED_OK;
+}
+
+int mcsos_sched_yield(mcsos_scheduler_t *s) {
+    if (!s || !s->ready_head) return MCSOS_SCHED_ERR;
+
+    mcsos_thread_t *next = s->ready_head;
+
+    s->ready_head = next->next;
+    if (!s->ready_head)
+        s->ready_tail = NULL;
+
+    next->state = MCSOS_THREAD_RUNNING;
+
+    if (s->current) {
+        s->current->state = MCSOS_THREAD_READY;
+        s->current->next = NULL;
+
+        if (s->ready_tail) {
+            s->ready_tail->next = s->current;
+            s->ready_tail = s->current;
+        } else {
+            s->ready_head = s->ready_tail = s->current;
+        }
+    }
+
+    s->current = next;
+    s->context_switches++;
+
+    if (s->current && s->current->entry) {
+        s->current->entry(s->current->arg);
+    }
+
+    return MCSOS_SCHED_OK;
+}
+
+int mcsos_sched_validate(mcsos_scheduler_t *s) {
+    if (!s) return MCSOS_SCHED_ERR;
+
+    uint64_t count = 0;
+    mcsos_thread_t *cur = s->ready_head;
+
+    while (cur) {
+        if (cur->state != MCSOS_THREAD_READY)
+            return MCSOS_SCHED_ERR;
+
+        count++;
+        cur = cur->next;
+    }
+
+    if (count != s->runnable_count)
+        return MCSOS_SCHED_ERR;
+
+    if (s->current && s->current->entry) {
+        s->current->entry(s->current->arg);
+    }
+
+    return MCSOS_SCHED_OK;
+}

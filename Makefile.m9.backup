@@ -1,0 +1,37 @@
+CC := clang
+LD := ld.lld
+OBJDUMP ?= objdump
+READELF ?= readelf
+NM ?= nm
+SHA256SUM ?= sha256sum
+
+BUILD := build/m9
+
+CFLAGS_HOST := -std=c17 -Wall -Wextra -Werror -DMCSOS_HOST_TEST -Iinclude
+CFLAGS_KERNEL := -target x86_64-unknown-none-elf -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -Wall -Wextra -Werror -Iinclude
+ASFLAGS_KERNEL := -target x86_64-unknown-none-elf -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone
+
+.PHONY: m9-host-test m9-freestanding m9-audit m9-clean m9-all
+
+$(BUILD):
+	mkdir -p $(BUILD)
+
+m9-host-test: $(BUILD)
+	$(CC) $(CFLAGS_HOST) tests/test_scheduler.c kernel/mcsos_thread.c -o $(BUILD)/m9_host_test
+	$(BUILD)/m9_host_test | tee $(BUILD)/test_scheduler.log
+
+m9-freestanding: $(BUILD)
+	$(CC) $(CFLAGS_KERNEL) -c kernel/mcsos_thread.c -o $(BUILD)/mcsos_thread.o
+	$(CC) $(ASFLAGS_KERNEL) -c arch/x86_64/context_switch.S -o $(BUILD)/context_switch.o
+	$(LD) -r $(BUILD)/mcsos_thread.o $(BUILD)/context_switch.o -o $(BUILD)/m9_scheduler.o
+
+m9-audit: m9-freestanding
+	$(NM) -u $(BUILD)/m9_scheduler.o | tee $(BUILD)/nm.log
+	$(READELF) -h $(BUILD)/m9_scheduler.o | tee $(BUILD)/readelf.log
+	$(OBJDUMP) -d $(BUILD)/m9_scheduler.o | grep -E 'mcsos_context_switch|jmp|ret|hlt' | tee $(BUILD)/objdump.log
+	$(SHA256SUM) $(BUILD)/m9_host_test $(BUILD)/m9_scheduler.o | tee $(BUILD)/sha256.log
+
+m9-all: m9-host-test m9-freestanding m9-audit
+
+m9-clean:
+	rm -rf $(BUILD)
