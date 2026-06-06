@@ -12,6 +12,7 @@ volatile LIMINE_BASE_REVISION(0);
 #include <pic.h>
 #include <pit.h>
 #include <mcsos/syscall.h>
+extern void m11_kernel_selftest(void);
 #include <mcsos/kernel/version.h>
 
 extern char __kernel_start[];
@@ -85,6 +86,7 @@ KERNEL_PANIC(
 log_writeln("[M4] IDT and exception dispatch path installed");
 log_writeln("[M4] ready for QEMU smoke test and GDB audit");
 
-cpu_halt_forever();
+m11_kernel_selftest();
+	cpu_halt_forever();
 #endif
 }
