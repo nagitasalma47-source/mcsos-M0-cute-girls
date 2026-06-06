@@ -11,109 +11,11 @@ volatile LIMINE_BASE_REVISION(0);
 #include <io.h>
 #include <pic.h>
 #include <pit.h>
+#include <mcsos/syscall.h>
 #include <mcsos/kernel/version.h>
-#include "pmm.h"
-#include "vmm.h"
-#include "mcsos/kmem.h"
-#include "mcsos_thread.h"
 
 extern char __kernel_start[];
 extern char __kernel_end[];
-
-static struct pmm_state kernel_pmm;
-static uint8_t kernel_pmm_bitmap[PMM_BITMAP_BYTES] __attribute__((aligned(4096)));
-
-static struct vmm_space kernel_space;
-static uint64_t hhdm_offset = 0;
-
-#define M8_BOOT_HEAP_SIZE (64u * 1024u)
-#define KHEAP_BASE 0xffffffff90000000ull
-#define KHEAP_SIZE (256ull * 1024ull)
-static unsigned char m8_boot_heap[M8_BOOT_HEAP_SIZE] __attribute__((aligned(4096)));
-
-static mcsos_scheduler_t g_sched;
-static mcsos_thread_t g_boot_thread;
-static mcsos_thread_t g_thread_a;
-static mcsos_thread_t g_thread_b;
-static unsigned char g_stack_a[8192] __attribute__((aligned(16)));
-static unsigned char g_stack_b[8192] __attribute__((aligned(16)));
-
-static __attribute__((unused)) void m8_heap_bootstrap(void) {
-    int rc = kmem_init(m8_boot_heap, sizeof(m8_boot_heap));
-
-    if (rc != 0) {
-        kernel_panic_at(__FILE__, __LINE__, "M8 kmem_init failed", 0);
-    }
-
-    void *probe = kmem_alloc(128);
-
-    if (probe == 0) {
-        kernel_panic_at(__FILE__, __LINE__, "M8 kmem_alloc probe failed", 0);
-    }
-
-    if (kmem_free_checked(probe) != 0) {
-        kernel_panic_at(__FILE__, __LINE__, "M8 kmem_free_checked probe failed", 0);
-    }
-
-    kmem_stats_t st;
-    kmem_get_stats(&st);
-
-    log_writeln("M8 kmem initialized");
-}
-static __attribute__((unused)) int kheap_map_initial_pages(void) {
-    for (uint64_t va = KHEAP_BASE; 
-         va < KHEAP_BASE + KHEAP_SIZE; 
-         va += 4096ull) {
-
-        uint64_t pa = pmm_alloc_frame(&kernel_pmm);
-
-        if (pa == PMM_INVALID_FRAME) {
-            return -1;
-        }
-
-        int rc = vmm_map_page(
-            &kernel_space,
-            va,
-            pa,
-            VMM_PTE_PRESENT | VMM_PTE_WRITABLE
-        );
-
-        if (rc != VMM_MAP_OK) {
-            pmm_free_frame(&kernel_pmm, pa);
-            return -2;
-        }
-    }
-
-    return kmem_init((void *)KHEAP_BASE, KHEAP_SIZE);
-}
-
-static void memzero(void *ptr, uint64_t size) {
-    uint8_t *p = (uint8_t *)ptr;
-    for (uint64_t i = 0; i < size; i++) {
-        p[i] = 0;
-    }
-}
-
-static uint64_t kernel_vmm_alloc(void *ctx) {
-    (void)ctx;
-    return pmm_alloc_frame(&kernel_pmm);
-}
-
-static void kernel_vmm_free(void *ctx, uint64_t frame_paddr) {
-    (void)ctx;
-    pmm_free_frame(&kernel_pmm, frame_paddr);
-}
-
-static void *kernel_phys_to_virt(void *ctx, uint64_t paddr) {
-    uint64_t offset = *(uint64_t *)ctx;
-    return (void *)(uintptr_t)(offset + paddr);
-}
-
-static struct boot_mem_region test_regions[] = {
-    { .base = 0x00000000ULL, .length = 0x0009f000ULL, .type = BOOT_MEM_USABLE },
-    { .base = 0x0009f000ULL, .length = 0x00001000ULL, .type = BOOT_MEM_RESERVED },
-    { .base = 0x00100000ULL, .length = 0x03f00000ULL, .type = BOOT_MEM_USABLE },
-};
 
 static void m4_selftest(void) {
 KERNEL_ASSERT(__kernel_end > __kernel_start);
@@ -123,22 +25,6 @@ KERNEL_ASSERT(x86_64_idt_base_for_test() != 0u);
 KERNEL_ASSERT(x86_64_idt_limit_for_test() == 4095u);
 
 log_writeln("[M4] selftest: IDT invariants passed");
-}
-
-static void demo_thread_a(void *arg) {
-    (void)arg;
-    for (;;) {
-        log_writeln("[M9] thread A tick");
-        mcsos_sched_yield(&g_sched);
-    }
-}
-
-static void demo_thread_b(void *arg) {
-    (void)arg;
-    for (;;) {
-        log_writeln("[M9] thread B tick");
-        mcsos_sched_yield(&g_sched);
-    }
 }
 
 void kmain(void) {
@@ -178,83 +64,11 @@ cpu_sti();
 
 
 log_writeln("[M5] PIC/PIT initialized; interrupts enabled");
+syscall_arch_init();
+	mcsos_syscall_init(0);
+	mcsos_syscall_dispatch(MCSOS_SYS_PING, 0, 0, 0, 0, 0, 0);
 
 m4_selftest();
-
-if (!pmm_init_from_map(
-    &kernel_pmm,
-    test_regions,
-    sizeof(test_regions) / sizeof(test_regions[0]),
-    kernel_pmm_bitmap,
-    sizeof(kernel_pmm_bitmap),
-
-
-
-    64ULL * 1024ULL * 1024ULL
-)) {
-    KERNEL_PANIC("pmm_init_from_map failed", 0x4D3650414E4943ULL);
-}
-
-log_writeln("[M6] PMM initialized");
-
-uint64_t frame = pmm_alloc_frame(&kernel_pmm);
-
-if (frame == PMM_INVALID_FRAME) {
-    KERNEL_PANIC("pmm_alloc_frame failed", 0x4D3650414E4943ULL);
-}
-
-log_key_value_hex64("[M6] allocated_frame", frame);
-
-if (!pmm_free_frame(&kernel_pmm, frame)) {
-    KERNEL_PANIC("pmm_free_frame failed", 0x4D3650414E4943ULL);
-}
-
-log_writeln("[M6] PMM selftest passed");
-
-uint64_t root = pmm_alloc_frame(&kernel_pmm);
-
-if (root == PMM_INVALID_FRAME) {
-    KERNEL_PANIC("M7: cannot allocate root page table", 0x4D3750414E4943ULL);
-}
-
-void *root_virt = kernel_phys_to_virt(&hhdm_offset, root);
-
-memzero(root_virt, 4096);
-
-int vmm_rc = vmm_space_init(
-    &kernel_space,
-    root,
-    &hhdm_offset,
-    kernel_vmm_alloc,
-    kernel_vmm_free,
-    kernel_phys_to_virt
-);
-
-if (vmm_rc != VMM_MAP_OK) {
-    KERNEL_PANIC("M7: vmm_space_init failed", 0x4D3750414E4943ULL);
-}
-
-log_writeln("[M7] VMM core initialized");
-
-//    kheap_map_initial_pages();
-//    m8_heap_bootstrap();
-//log_writeln("[M8] kernel heap initialized");
-
-mcsos_scheduler_init(&g_sched, &g_boot_thread);
-
-mcsos_thread_prepare(&g_thread_a, "demo-a", demo_thread_a, 0,
-g_stack_a, sizeof(g_stack_a), g_sched.next_id++);
-
-mcsos_thread_prepare(&g_thread_b, "demo-b", demo_thread_b, 0,
-g_stack_b, sizeof(g_stack_b), g_sched.next_id++);
-
-mcsos_sched_enqueue(&g_sched, &g_thread_a);
-mcsos_sched_enqueue(&g_sched, &g_thread_b);
-
-log_writeln("[M9] scheduler initialized");
-
-mcsos_sched_yield(&g_sched);
-
 
 #ifdef MCSOS_M4_TRIGGER_BREAKPOINT
 log_writeln("[M4] triggering intentional breakpoint exception");

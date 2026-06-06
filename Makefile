@@ -185,3 +185,38 @@ m8-audit:
 > nm -u $(M8_BUILD_DIR)/kmem.freestanding.o
 
 m8-all: m8-clean m8-kmem-freestanding m8-kmem-host-test m8-audit
+
+
+# ===== M10 Syscall =====
+
+M10_CFLAGS := -std=c17 -Wall -Wextra -Werror -Iinclude
+M10_KERNEL_CFLAGS := $(M10_CFLAGS) -Ikernel/include -target x86_64-elf -ffreestanding -fno-stack-protector -fno-builtin -mno-red-zone -O2 -g
+M10_HOST_CFLAGS := $(M10_CFLAGS) -O2 -g -DMCSOS_HOST_TEST
+
+build/test_syscall_host: tests/test_syscall_host.c kernel/syscall/syscall.c include/mcsos/syscall.h
+> mkdir -p build
+> $(HOSTCC) $(M10_HOST_CFLAGS) tests/test_syscall_host.c kernel/syscall/syscall.c -o build/test_syscall_host
+
+build/syscall.o: kernel/syscall/syscall.c include/mcsos/syscall.h
+> mkdir -p build
+> $(CC) $(M10_KERNEL_CFLAGS) -c kernel/syscall/syscall.c -o build/syscall.o
+
+build/syscall_entry.o: kernel/arch/x86_64/syscall_entry.S
+> mkdir -p build
+> $(CC) -target x86_64-elf -c kernel/arch/x86_64/syscall_entry.S -o build/syscall_entry.o
+
+build/m10_syscall_combined.o: build/syscall.o build/syscall_entry.o
+> ld -r build/syscall.o build/syscall_entry.o -o build/m10_syscall_combined.o
+
+m10-host-test: build/test_syscall_host
+> ./build/test_syscall_host
+
+m10-audit: build/m10_syscall_combined.o
+> $(NM) -u build/m10_syscall_combined.o > build/nm_undefined.txt
+> $(READELF) -h build/m10_syscall_combined.o > build/readelf_header.txt
+> $(OBJDUMP) -dr build/m10_syscall_combined.o > build/objdump.txt
+> sha256sum build/test_syscall_host build/m10_syscall_combined.o > build/SHA256SUMS
+> grep -q "x86_64_syscall_int80_stub" build/objdump.txt
+> grep -q "iretq" build/objdump.txt
+
+m10-all: m10-host-test m10-audit
