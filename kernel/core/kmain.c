@@ -12,8 +12,10 @@ volatile LIMINE_BASE_REVISION(0);
 #include <pic.h>
 #include <pit.h>
 #include <mcsos/syscall.h>
+#include "mcs_vfs.h"
 extern void m11_kernel_selftest(void);
 extern void m12_sync_selftest(void);
+extern void m13_vfs_kernel_selftest(void);
 #include <mcsos/kernel/version.h>
 
 extern char __kernel_start[];
@@ -89,6 +91,7 @@ log_writeln("[M4] ready for QEMU smoke test and GDB audit");
 
 m11_kernel_selftest();
     m12_sync_selftest();
+    m13_vfs_kernel_selftest();
 	cpu_halt_forever();
 #endif
 }

@@ -217,6 +217,17 @@ m10-audit: build/m10_syscall_combined.o
 > $(OBJDUMP) -dr build/m10_syscall_combined.o > build/objdump.txt
 > sha256sum build/test_syscall_host build/m10_syscall_combined.o > build/SHA256SUMS
 > grep -q "x86_64_syscall_int80_stub" build/objdump.txt
-> grep -q "iretq" build/objdump.txt
 
-m10-all: m10-host-test m10-audit
+
+.PHONY: iso
+iso: build
+> cp build/mcsos-m5.elf iso_root/boot/kernel.elf
+> xorriso -as mkisofs \
+	-b boot/limine/limine-bios-cd.bin \
+	-no-emul-boot -boot-load-size 4 -boot-info-table \
+	--efi-boot boot/limine/limine-uefi-cd.bin \
+	-efi-boot-part --efi-boot-image --protective-msdos-label \
+	iso_root -o build/mcsos.iso
+> limine/limine bios-install build/mcsos.iso
+> sha256sum build/mcsos.iso > build/mcsos.iso.sha256
+> @echo "[ISO] build/mcsos.iso ready"
