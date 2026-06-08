@@ -20,8 +20,9 @@ void pit_configure_hz(uint32_t hz) {
 void timer_on_irq0(void) {
     g_ticks++;
 
-
-   if ((g_ticks % 100) == 0) {
+    if ((g_ticks % 100) == 0) {
         serial_write("[MCSOS:TIMER] tick\n");
     }
+
+    outb(0x20, 0x20);
 }
