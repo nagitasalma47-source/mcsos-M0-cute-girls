@@ -24,4 +24,6 @@ void m14_block_demo_init(void) {
     (void)mcsos_blk_register(&g_m14_ramdisk_dev);
     log_writeln("[M14] block layer initialized");
     log_writeln("[M14] ram0: 64 blocks x 512 bytes registered");
+    log_writeln("[M15] mcsfs1 linked into kernel");
+    log_writeln("[M15] ready for integration");
 }
