@@ -26,4 +26,6 @@ void m14_block_demo_init(void) {
     log_writeln("[M14] ram0: 64 blocks x 512 bytes registered");
     log_writeln("[M15] mcsfs1 linked into kernel");
     log_writeln("[M15] ready for integration");
+    log_writeln("[M16] mcsfs1j linked into kernel");
+    log_writeln("[M16] journal recovery support available");
 }
